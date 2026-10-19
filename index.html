@@ -4467,6 +4467,17 @@ len1=val.length;len1>k;k++)item=val[k],childNode={},childNode[key]=item,lastChil
         }
 
         // --- 2. Media Processing (FFmpeg.wasm v0.12.x) ---
+        // Turn anything that was thrown (Error, ErrorEvent, plain object, string) into readable text.
+        function describeError(e) {
+            if (e == null) return 'no error details';
+            if (typeof e === 'string') return e;
+            if (e instanceof Error) return e.message || e.name || 'Error';
+            if (typeof e.message === 'string' && e.message) return e.message;
+            if (e.error && typeof e.error.message === 'string' && e.error.message) return e.error.message;
+            if (typeof e.type === 'string') return `"${e.type}" event`;
+            try { return JSON.stringify(e) || String(e); } catch (_) { return String(e); }
+        }
+
         async function convertMediaWithFFmpeg(file, targetExt, mimeType) {
             appendLog('Initializing FFmpeg WebAssembly runtime...');
             updateProgress(10, 'Loading Transcoder...');
@@ -4489,13 +4500,23 @@ len1=val.length;len1>k;k++)item=val[k],childNode={},childNode[key]=item,lastChil
                     updateProgress(20 + (p * 0.75), 'Transcoding...');
                 });
 
+                let coreURL, wasmURL;
                 try {
-                    const { coreURL, wasmURL } = await getCoreURLs();
+                    ({ coreURL, wasmURL } = await getCoreURLs());
+                } catch (e) {
+                    ffmpegInstance = null;
+                    const msg = describeError(e);
+                    appendLog('Engine download failed: ' + msg, 'error');
+                    throw new Error('Could not download the FFmpeg engine (' + msg + '). The first download needs an internet connection.');
+                }
+                try {
                     const classWorkerURL = URL.createObjectURL(new Blob([window.__FFMPEG_WORKER__], { type: 'text/javascript' }));
                     await ffmpegInstance.load({ classWorkerURL, coreURL, wasmURL });
                 } catch (e) {
                     ffmpegInstance = null;
-                    throw new Error('Could not load the FFmpeg engine (' + e.message + '). The first load needs an internet connection.');
+                    const msg = describeError(e);
+                    appendLog('FFmpeg failed to start: ' + msg + (e && e.stack ? '\n' + e.stack : ''), 'error');
+                    throw new Error('Could not start the FFmpeg engine (' + msg + '). The engine is installed; see the execution log for details.');
                 }
             }
 
