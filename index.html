@@ -67,6 +67,7 @@ footer .link{color:var(--mut);font-size:12.5px}
         <h1>OmniConvert</h1>
         <nav class="nav">
             <button type="button" id="offlineBtn" class="link"><span id="offlineLabel">Checking offline engine…</span></button>
+            <button type="button" id="deleteEngineBtn" class="link hidden">Delete offline engine</button>
             <button type="button" id="themeBtn" class="link">Light mode</button>
         </nav>
     </header>
@@ -4766,6 +4767,7 @@ len1=val.length;len1>k;k++)item=val[k],childNode={},childNode[key]=item,lastChil
         const CORE_BASE = `https://unpkg.com/@ffmpeg/core@${CORE_VER}/dist/umd`;
         const offlineBtn = document.getElementById('offlineBtn');
         const offlineLabel = document.getElementById('offlineLabel');
+        const deleteEngineBtn = document.getElementById('deleteEngineBtn');
 
         function idbOpen() {
             return new Promise((res, rej) => {
@@ -4792,7 +4794,17 @@ len1=val.length;len1>k;k++)item=val[k],childNode={},childNode[key]=item,lastChil
                 t.onerror = () => rej(t.error);
             });
         }
+        async function idbDelete(k) {
+            const db = await idbOpen();
+            return new Promise((res, rej) => {
+                const t = db.transaction('cache', 'readwrite');
+                t.objectStore('cache').delete(k);
+                t.oncomplete = () => res();
+                t.onerror = () => rej(t.error);
+            });
+        }
         function setOffline(ready) {
+            deleteEngineBtn.classList.toggle('hidden', !ready);
             offlineLabel.innerText = ready ? 'Offline ready ✓' : 'Get offline engine (31 MB)';
             offlineBtn.disabled = ready;
         }
@@ -4832,6 +4844,20 @@ len1=val.length;len1>k;k++)item=val[k],childNode={},childNode[key]=item,lastChil
             offlineBtn.disabled = true;
             try { await getCoreURLs(); }
             catch (e) { offlineLabel.innerText = 'Download failed, retry'; offlineBtn.disabled = false; appendLog('Engine download failed: ' + e.message, 'error'); }
+        });
+        deleteEngineBtn.addEventListener('click', async () => {
+            if (!confirm('Delete the offline FFmpeg engine (about 31 MB)? You will need to download it again before converting video or audio offline.')) return;
+            deleteEngineBtn.disabled = true;
+            try {
+                await idbDelete('core-js-' + CORE_VER);
+                await idbDelete('core-wasm-' + CORE_VER);
+                setOffline(false);
+                appendLog('Offline FFmpeg engine deleted.', 'success');
+            } catch (e) {
+                appendLog('Could not delete the offline engine: ' + e.message, 'error');
+            } finally {
+                deleteEngineBtn.disabled = false;
+            }
         });
         idbGet('core-wasm-' + CORE_VER).then(v => setOffline(!!v)).catch(() => { offlineLabel.innerText = 'Offline cache unavailable'; offlineBtn.disabled = true; });
 
